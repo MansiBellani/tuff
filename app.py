@@ -29,11 +29,22 @@ def generate_search_query(keywords: list) -> str:
     keyword_query = f"({' OR '.join(query_parts)})"
     
     # Refined query for more relevance
-    full_query = f"{keyword_query} AND ('university research funding' OR 'federal research grants' OR 'R&D policy') (site:.gov OR site:.edu OR site:.org)"
+    full_query = f"{keyword_query} AND ('university research funding' OR 'federal research grants' OR 'R&D policy') AND (site:.gov OR site:.edu OR site:.org)"
     return full_query
 
 def normalize_bullet(line):
     return re.sub(r"^\s*[\d]+[\.\)]\s*", "", line).strip()
+
+def safe_plain_text(md: str) -> str:
+    if not isinstance(md, str):
+        return ""
+    # remove HTML tags
+    md = re.sub(r"<[^>]+>", "", md)
+    # decode HTML entities
+    md = html.unescape(md)
+    # tidy whitespace
+    md = re.sub(r"[ \t]+", " ", md)
+    return md.strip()
 
 
 # --- Initialization ---
@@ -178,15 +189,24 @@ if generate_button:
             for item in st.session_state.report_summaries:
                 final_report_content += f"## Intelligence Briefing: {item['theme']}\n\n"
                 final_report_content += f"{item['content']}\n\n---\n\n"
-            
-            response = add_content_to_document(content=final_report_content, file_name=report_title)
-            st.success(response)
-            
-            if "Success!" in response:
-                st.session_state.last_report_content = final_report_content
+
+            # Convert to plain text before sending to Google Docs
+            plain = safe_plain_text(final_report_content)
+            if not plain:
+                st.error("No content to insert — please add at least one summary.")
+                st.stop()
+
+            response = add_content_to_document(content=plain, file_name=report_title)
+
+            if isinstance(response, str) and response.startswith("http"):
+                st.success("Success! Your Google Doc has been created.")
+                st.markdown(f"[Open the Google Doc]({response})")
+                st.session_state.last_report_content = plain
                 st.session_state.last_report_title = report_title
                 st.session_state.last_report_url = response
-            
+            else:
+                st.warning(f"Document created but no URL was returned (or an informational message was returned): {response}")
+
             st.session_state.report_summaries = []
 
 if st.session_state.last_report_url:
