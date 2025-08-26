@@ -1,12 +1,14 @@
+# requirements.txt
+
 streamlit
 pandas
-python-dotenv
 openai>=1.3.0
 arcadepy
 vapi-python
 httpx
 trafilatura
 spacy==3.7.2
+https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.2/en_core_web_sm-3.7.2.tar.gz
 thinc==8.2.2
 numpy==1.26.0
 rapidfuzz
