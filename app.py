@@ -1,4 +1,10 @@
 import streamlit as st
+for key in ("ARCADE_API_KEY", "ARCADE_USER_ID", "SERPER_API_KEY", "OPENAI_API_KEY"):
+    try:
+        if key in st.secrets and not os.getenv(key):
+            os.environ[key] = str(st.secrets[key])
+    except Exception:
+        pass
 import pandas as pd
 import re
 import html
