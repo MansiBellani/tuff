@@ -12,3 +12,5 @@ blis==0.7.11
 rapidfuzz
 python-dotenv
 https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl
+scikit-learn==1.3.2
+python-dateutil
