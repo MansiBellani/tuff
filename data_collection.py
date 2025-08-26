@@ -17,13 +17,21 @@ class MarketIntelligenceCollector:
         self.serper_headers = {
             "X-API-KEY": self.serper_api_key, "Content-Type": "application/json"
         }
+        # --- IMPORTANT: do NOT download models at runtime on Streamlit ---
+        # The model should be installed at build time via requirements.txt.
+        # Fallback to a blank English pipeline if loading fails.
         try:
             self.nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            spacy.cli.download("en_core_web_sm")
-            self.nlp = spacy.load("en_core_web_sm")
+        except Exception:
+            self.nlp = spacy.blank("en")
 
-    def search_web_and_extract(self, query: str, search_type: str = "news", num_results: int = 15, date_filter: str = None) -> pd.DataFrame:
+    def search_web_and_extract(
+        self,
+        query: str,
+        search_type: str = "news",
+        num_results: int = 15,
+        date_filter: str = None
+    ) -> pd.DataFrame:
         if not self.serper_api_key:
             print("⚠️ SERPER_API_KEY not found.")
             return pd.DataFrame()
@@ -33,7 +41,7 @@ class MarketIntelligenceCollector:
         endpoint = "https://google.serper.dev/news" if search_type == "news" else "https://google.serper.dev/search"
         payload = {"q": query, "num": num_results}
 
-        # --- RE-IMPLEMENTED NATIVE DATE FILTERING ---
+        # --- Native date filtering for Serper ---
         date_filter_map = {
             "d": "qdr:d",  # past day
             "w": "qdr:w",  # past week
@@ -41,7 +49,6 @@ class MarketIntelligenceCollector:
         }
         if date_filter in date_filter_map:
             payload["tbs"] = date_filter_map[date_filter]
-        # --- END OF FIX ---
 
         try:
             async with httpx.AsyncClient(timeout=20) as client:
@@ -52,16 +59,21 @@ class MarketIntelligenceCollector:
                 print(f"No results found for query: '{query}'")
                 return pd.DataFrame()
 
-            urls = [r["link"] for r in results]
+            urls = [r.get("link", "") for r in results if r.get("link")]
             async with httpx.AsyncClient(timeout=25, follow_redirects=True) as client:
                 tasks = [client.get(u) for u in urls]
                 responses = await asyncio.gather(*tasks, return_exceptions=True)
 
             articles = []
             for meta, response in zip(results, responses):
-                if isinstance(response, Exception) or not hasattr(response, 'text') or not response.text:
+                if isinstance(response, Exception) or not hasattr(response, "text") or not response.text:
                     continue
-                body = trafilatura.extract(response.text, include_comments=False, include_formatting=False)
+
+                body = trafilatura.extract(
+                    response.text,
+                    include_comments=False,
+                    include_formatting=False
+                )
                 if not body:
                     continue
 
@@ -73,20 +85,26 @@ class MarketIntelligenceCollector:
                 except Exception:
                     date_iso = ""
 
+                link = meta.get("link", "")
+                source = meta.get("source") or (link.split("/")[2] if "/" in link else "Unknown")
+
                 articles.append({
-                    "title": meta.get("title", "No Title"), "link": meta.get("link", ""),
-                    "published": date_iso, "summary": body,
-                    "source": meta.get("source", meta.get("link", "").split("/")[2]),
-                    "category": "web_search"
+                    "title": meta.get("title", "No Title"),
+                    "link": link,
+                    "published": date_iso,
+                    "summary": body,
+                    "source": source,
+                    "category": "web_search",
                 })
-            
+
             if not articles:
                 return pd.DataFrame()
 
             df = pd.DataFrame(articles)
             df["msa"] = df["summary"].fillna("").str[:5000].apply(extract_msa_region)
-            df['keywords'] = df['summary'].apply(lambda text: self.extract_keywords(text))
+            df["keywords"] = df["summary"].apply(lambda text: self.extract_keywords(text))
             return df
+
         except Exception as e:
             print(f"❌ An error occurred during web search: {e}")
             return pd.DataFrame()
@@ -95,7 +113,7 @@ class MarketIntelligenceCollector:
         if not isinstance(text, str) or len(text.strip()) < 20:
             return []
         try:
-            tfidf = TfidfVectorizer(stop_words='english', max_features=100)
+            tfidf = TfidfVectorizer(stop_words="english", max_features=100)
             X = tfidf.fit_transform([text])
             feature_names = tfidf.get_feature_names_out()
             scores = X.toarray()[0]
